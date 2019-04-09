@@ -1,4 +1,6 @@
-
+// Joe Harkins
+// 04/02/19
+// Project 1
 #include "simfs.h"
 
 //////////////////////////////////////////////////////////////////////////
@@ -257,7 +259,87 @@ SIMFS_ERROR simfsUmountFileSystem(char *simfsFileName)
  */
 SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
 {
-    // TODO: implement
+    // TODO: Done
+        *simfsContext->bitvector = *simfsVolume->bitvector; // To ensure that when we start, the context bit vector is the volume's bit vector.
+    // Check the process control block to make sure we are in the root folder.
+    SIMFS_NAME_TYPE  fileDescriptorPath= "";
+
+
+    if(simfsContext->processControlBlocks == NULL) //Root Directory
+    {
+        sprintf(fileDescriptorPath,"/%s/",fileName);
+    }
+    else // Need to go into the process control block and get current working directory
+    {
+        sprintf(fileDescriptorPath,"%s%s/",simfsVolume->block[simfsContext->processControlBlocks->currentWorkingDirectory].content.fileDescriptor.name,fileName);
+    }
+
+
+    SIMFS_DIR_ENT *nodeSearch;
+    unsigned long hashIndex = hash(fileDescriptorPath);
+
+    nodeSearch = &simfsContext->directory[hashIndex];
+
+    // Traverse the directory to determine if the fileName is already created.
+    while(nodeSearch!= NULL)
+    {
+        if(strcmp(fileDescriptorPath, simfsVolume->block[nodeSearch->nodeReference].content.fileDescriptor.name) == 0)
+        {
+            // Duplicate Found
+            return SIMFS_DUPLICATE_ERROR;
+        }
+        else
+        {
+            nodeSearch = nodeSearch->next;
+        }
+    }
+   // End of duplicate search
+    unsigned short freeBlock= simfsFindFreeBlock(simfsContext->bitvector); // Find the free block
+    unsigned short freeFolderBlock;
+    simfsFlipBit(simfsContext->bitvector, freeBlock); // We need to flip the block to state this block is no longer free (File is going to be placed here)
+    simfsVolume->block[freeBlock].type = type;
+
+
+    //File Descriptor Node contains all the information of the file//
+    SIMFS_FILE_DESCRIPTOR_TYPE *temp = (SIMFS_FILE_DESCRIPTOR_TYPE *)malloc(sizeof(struct simfs_file_descriptor_type));
+    memcpy(temp->name, fileDescriptorPath,strlen(fileDescriptorPath)+1);
+    temp->type = type;
+    temp->creationTime = time(0);
+    temp->lastAccessTime = temp->creationTime;
+    temp->lastModificationTime = temp->lastAccessTime;
+    temp->accessRights = 0777; // Simulated Value to give this file an access right.
+    temp->size = 0;
+
+        if (type == FOLDER_CONTENT_TYPE )
+        {
+
+        freeFolderBlock = simfsFindFreeBlock(simfsContext->bitvector);
+        simfsFlipBit(simfsContext->bitvector, freeFolderBlock);
+        simfsVolume->block[freeFolderBlock].type = type;
+        temp->block_ref = freeFolderBlock;
+
+        }
+        else // If it is a FILE_CONTENT_TYPE
+        {
+            temp->block_ref = SIMFS_INVALID_INDEX;
+        }
+
+
+    simfsVolume->block[freeBlock].content.fileDescriptor = *temp;
+
+    // Created the File or Folder into Memory. Need to put the file or folder into the directory.
+    nodeSearch = &simfsContext->directory[hashIndex];
+    while(nodeSearch->next != NULL)
+    {
+        nodeSearch = nodeSearch->next;
+    }
+    nodeSearch->next = (SIMFS_DIR_ENT*)malloc(sizeof(SIMFS_DIR_ENT));
+    nodeSearch = nodeSearch->next;
+    //node reference describes the location in the volume
+    nodeSearch->nodeReference = freeBlock;
+    nodeSearch->next = NULL;
+
+    *simfsVolume->bitvector = *simfsContext->bitvector; // Copy the In-Memory bitvector to the simulated disk
 
     return SIMFS_NO_ERROR;
 }
@@ -283,7 +365,170 @@ SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
 SIMFS_ERROR simfsDeleteFile(SIMFS_NAME_TYPE fileName)
 {
     // TODO: implement
+    
 
+     SIMFS_NAME_TYPE  fileDescriptorPath= "";
+
+    if(simfsContext->processControlBlocks == NULL) //Root Directory
+    {
+        sprintf(fileDescriptorPath,"%s%s/","/",fileName);
+    }
+    else // Need to go into the process control block and get current working directory
+    {
+    
+        sprintf(fileDescriptorPath,"%s%s/",simfsVolume->block[simfsContext->processControlBlocks->currentWorkingDirectory].content.fileDescriptor.name,fileName);
+    }
+
+
+    SIMFS_DIR_ENT *nodeCurrent, *nodePrevious = nodeCurrent;
+    unsigned long hashIndex = hash(fileDescriptorPath);
+
+    nodeCurrent = &simfsContext->directory[hashIndex];
+
+    while(nodeCurrent != NULL && strcmp(fileDescriptorPath, simfsVolume->block[nodeCurrent->nodeReference].content.fileDescriptor.name) != 0)
+    {
+       nodePrevious = nodeCurrent;
+       nodeCurrent = nodeCurrent->next;
+    }
+    
+    if (nodeCurrent == NULL)
+    {
+        return SIMFS_NOT_FOUND_ERROR;
+    }
+
+        SIMFS_FILE_DESCRIPTOR_TYPE *temp = &simfsVolume->block[nodeCurrent->nodeReference].content.fileDescriptor;
+    
+    if (temp->type == FOLDER_CONTENT_TYPE)  // We have a Folder -------------------
+    {
+        //Check if the Folder is Empty
+        if (temp->size != 0)
+        {
+            return SIMFS_NOT_EMPTY_ERROR;
+        }
+        else
+        {
+            temp->accessRights = (0777) << 1;
+            //check if I have the access rights to accomplish such a task.
+            if(temp->accessRights >= 256)
+            {
+                // free the folder
+                if (nodeCurrent->next == NULL)// Last ONE!
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious->next = NULL;
+                }
+                else if (nodeCurrent->next != NULL && nodePrevious != nodeCurrent) // If it is the first thing.
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious->next = nodeCurrent->next;
+                    nodeCurrent = NULL;
+                }
+                else // Our Previous Node is the same as our current node
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious = nodeCurrent->next;
+                    nodeCurrent = NULL;
+                    simfsContext->directory[hashIndex] = nodePrevious;
+                }
+            }
+            else
+            {
+                return SIMFS_ACCESS_ERROR;
+            }
+
+                
+
+        }
+    }
+    else // We have a File -------------------
+    {
+
+        temp->accessRights = (0777) << 1;
+            
+            if(temp->accessRights >= 256)
+            {
+                unsigned short numOfDataBlocksForFiles = temp->size/SIMFS_DATA_SIZE;
+                if ((temp->size % SIMFS_DATA_SIZE) > 0)
+                {
+                    numOfDataBlocksForFiles += 1;
+                }
+
+                    if (numOfDataBlocksForFiles == 1)  // There is only one file to handle.
+                    {
+                        simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                        numOfDataBlocksForFiles--;
+                    }
+                    else // We need to account for multiple files. 
+                    {
+
+                        SIMFS_INDEX_TYPE indexLocation = temp->block_ref;
+                        SIMFS_INDEX_TYPE *searchIndex = simfsVolume->block[indexLocation].content.index;
+
+
+                                int counter = 0;
+                                while (numOfDataBlocksForFiles != 0)
+                                {
+                                    counter = counter % SIMFS_INDEX_SIZE; // 
+
+                                    if (simfsVolume->block[searchIndex[counter]].type == DATA_CONTENT_TYPE)
+                                    {
+                                        simfsFlipBit(simfsContext->bitvector, searchIndex[counter]);
+                                        numOfDataBlocksForFiles--;
+                                    }
+                                    else  // We are dealing with an INDEX_CONTENT_TYPE
+                                    {
+                                        simfsFlipBit(simfsContext->bitvector, indexLocation);
+                                        indexLocation = searchIndex[counter];
+                                        searchIndex[counter] = simfsVolume->block[searchIndex[counter]].content.index;
+                                    }
+                                     counter++;
+                                }
+
+                                simfsFlipBit(simfsContext->bitvector, indexLocation);
+
+                    }
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+
+
+                // free the folder
+                if (nodeCurrent->next == NULL)// Last ONE!
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious->next = NULL;
+                }
+                else if (nodeCurrent->next != NULL && nodePrevious != nodeCurrent) // If it is the first thing.
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious->next = nodeCurrent->next;
+                    nodeCurrent = NULL;
+                }
+                else // Our Previous Node is the same as our current node
+                {
+                    simfsFlipBit(simfsContext->bitvector, temp->block_ref);
+                    simfsFlipBit(simfsContext->bitvector, nodeCurrent->nodeReference);
+                    nodePrevious = nodeCurrent->next;
+                    nodeCurrent = NULL;
+                    simfsContext->directory[hashIndex] = nodePrevious;
+                }
+
+
+
+            }
+            else
+            {
+                return SIMFS_ACCESS_ERROR;
+            }
+
+
+    }
+    // Set File type when deleting to SIMFS_INVALID_Content aTYPE
+
+    *simfsVolume->bitvector = *simfsContext->bitvector; // Copy the In-Memory bit vector to the simulated disk
     return SIMFS_NO_ERROR;
 }
 
@@ -299,6 +544,31 @@ SIMFS_ERROR simfsGetFileInfo(SIMFS_NAME_TYPE fileName, SIMFS_FILE_DESCRIPTOR_TYP
 {
     // TODO: implement
 
+     SIMFS_NAME_TYPE  fileDescriptorPath= "";
+
+    if(simfsContext->processControlBlocks == NULL) //Root Directory
+    {
+        sprintf(fileDescriptorPath,"%s%s/","/",fileName);
+    }
+    else // Need to go into the process control block and get current working directory
+    {
+
+        sprintf(fileDescriptorPath,"%s%s/",simfsVolume->block[simfsContext->processControlBlocks->currentWorkingDirectory].content.fileDescriptor.name,fileName);
+    }
+
+    SIMFS_DIR_ENT *nodeSearch;
+    unsigned long hashIndex = hash(fileDescriptorPath);
+
+    nodeSearch = &simfsContext->directory[hashIndex];
+
+    // Traverse the directory to determine if the fileName is already created.
+    while(nodeSearch!= NULL && strcmp(fileDescriptorPath, simfsVolume->block[nodeSearch->nodeReference].content.fileDescriptor.name)!= 0)
+    {
+
+            nodeSearch = nodeSearch->next;
+
+    }
+    *infoBuffer =  simfsVolume->block[nodeSearch->nodeReference].content.fileDescriptor;
     return SIMFS_NO_ERROR;
 }
 
