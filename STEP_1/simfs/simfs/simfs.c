@@ -269,11 +269,10 @@ SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
     {
         sprintf(fileDescriptorPath,"/%s/",fileName);
     }
-    else // Need to go into the process control block and get current working directory
+    else if(simfsContext->processControlBlocks != NULL)
     {
         sprintf(fileDescriptorPath,"%s%s/",simfsVolume->block[simfsContext->processControlBlocks->currentWorkingDirectory].content.fileDescriptor.name,fileName);
     }
-
 
     SIMFS_DIR_ENT *nodeSearch;
     unsigned long hashIndex = hash(fileDescriptorPath);
@@ -285,7 +284,6 @@ SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
     {
         if(strcmp(fileDescriptorPath, simfsVolume->block[nodeSearch->nodeReference].content.fileDescriptor.name) == 0)
         {
-            // Duplicate Found
             return SIMFS_DUPLICATE_ERROR;
         }
         else
@@ -310,7 +308,7 @@ SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
     temp->accessRights = 0777; // Simulated Value to give this file an access right.
     temp->size = 0;
 
-        if (type == FOLDER_CONTENT_TYPE )
+        if (type == SIMFS_FOLDER_CONTENT_TYPE)
         {
 
         freeFolderBlock = simfsFindFreeBlock(simfsContext->bitvector);
@@ -340,6 +338,7 @@ SIMFS_ERROR simfsCreateFile(SIMFS_NAME_TYPE fileName, SIMFS_CONTENT_TYPE type)
     nodeSearch->next = NULL;
 
     *simfsVolume->bitvector = *simfsContext->bitvector; // Copy the In-Memory bitvector to the simulated disk
+
 
     return SIMFS_NO_ERROR;
 }
@@ -398,7 +397,7 @@ SIMFS_ERROR simfsDeleteFile(SIMFS_NAME_TYPE fileName)
 
         SIMFS_FILE_DESCRIPTOR_TYPE *temp = &simfsVolume->block[nodeCurrent->nodeReference].content.fileDescriptor;
     
-    if (temp->type == FOLDER_CONTENT_TYPE)  // We have a Folder -------------------
+    if (temp->type == SIMFS_FOLDER_CONTENT_TYPE)  // We have a Folder -------------------
     {
         //Check if the Folder is Empty
         if (temp->size != 0)
@@ -473,7 +472,7 @@ SIMFS_ERROR simfsDeleteFile(SIMFS_NAME_TYPE fileName)
                                 {
                                     counter = counter % SIMFS_INDEX_SIZE; // 
 
-                                    if (simfsVolume->block[searchIndex[counter]].type == DATA_CONTENT_TYPE)
+                                    if (simfsVolume->block[searchIndex[counter]].type == SIMFS_DATA_CONTENT_TYPE)
                                     {
                                         simfsFlipBit(simfsContext->bitvector, searchIndex[counter]);
                                         numOfDataBlocksForFiles--;
@@ -521,6 +520,7 @@ SIMFS_ERROR simfsDeleteFile(SIMFS_NAME_TYPE fileName)
             }
             else
             {
+
                 return SIMFS_ACCESS_ERROR;
             }
 
@@ -622,6 +622,47 @@ SIMFS_ERROR simfsGetFileInfo(SIMFS_NAME_TYPE fileName, SIMFS_FILE_DESCRIPTOR_TYP
 SIMFS_ERROR simfsOpenFile(SIMFS_NAME_TYPE fileName, SIMFS_FILE_HANDLE_TYPE *fileHandle)
 {
     // TODO: implement
+    //variable declarations
+
+    SIMFS_NAME_TYPE fileDescriptorPath = "";
+
+    SIMFS_OPEN_FILE_GLOBAL_TABLE_TYPE fileTable = ;
+
+    SIMFS_BLOCK_TYPE
+
+    unsigned short hashIndex = hash(fileDescriptorPath);
+
+
+
+    SIMFS_DIR_ENT *nodeCurrentFile , *nodePreviousFile = nodeCurrentFile;
+
+    nodeCurrentFile = &simfsContext->directory[hashIndex];
+
+    //variable declarations
+    if(simfsContext->processControlBlocks == NULL) //Root Directory
+    {
+        sprintf(fileDescriptorPath,"%s%s/","/",fileName);
+    }
+    else // Need to go into the process control block and get current working directory
+    {
+
+        sprintf(fileDescriptorPath,"%s%s/",simfsVolume->block[simfsContext->processControlBlocks->currentWorkingDirectory].content.fileDescriptor.name,fileName);
+    }
+
+    if(nodeCurrentFile != NULL)
+    {
+        SIMFS_FILE_DESCRIPTOR_TYPE *temp = &simfsVolume->block[nodeCurrentFile->nodeReference].content.fileDescriptor;
+
+        if(temp != NULL)
+        {
+
+        }
+
+    }
+    else
+    {
+        return SIMFS_NOT_FOUND_ERROR;
+    }
 
     return SIMFS_NO_ERROR;
 }
@@ -660,7 +701,8 @@ SIMFS_ERROR simfsOpenFile(SIMFS_NAME_TYPE fileName, SIMFS_FILE_HANDLE_TYPE *file
 SIMFS_ERROR simfsWriteFile(SIMFS_FILE_HANDLE_TYPE fileHandle, char *writeBuffer)
 {
     // TODO: implement
-
+    SIMFS_PROCESS_CONTROL_BLOCK_TYPE fileBlock = ;
+    SIMFS_OPEN_FILE_GLOBAL_TABLE_TYPE;
     return SIMFS_NO_ERROR;
 }
 
